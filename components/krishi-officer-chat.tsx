@@ -428,8 +428,7 @@ export function KrishiOfficerChat() {
                     <p className="text-sm leading-relaxed">{message.content}</p>
                     <div className="flex items-center gap-1 mt-2 text-xs opacity-70">
                       {message.type === "error" ? <AlertCircle className="h-3 w-3" /> : <Leaf className="h-3 w-3" />}
-                      <span>{message.timestamp.toLocaleTimeString(currentLanguage === "en" ? "en-US" : "hi-IN")}</span>
-                    </div>
+                      <span suppressHydrationWarning>{message.timestamp.toLocaleTimeString(currentLanguage === "en" ? "en-US" : "hi-IN")}</span>                    </div>
                   </div>
                 </div>
               ))}
@@ -485,6 +484,7 @@ export function KrishiOfficerChat() {
                   onChange={handleImageUpload}
                   accept="image/*"
                   className="hidden"
+                  title="Upload crop image"
                 />
 
                 <Button
