@@ -154,7 +154,7 @@ const callLLM = async (
     contextualPrompt += `INSTRUCTIONS: Use the provided data to give specific, actionable advice. Reference the data sources when relevant. Keep responses practical and farmer-friendly.\n\n`
     contextualPrompt += `${prompt}\n\nassistant:`
 
-    const model = genAI.getGenerativeModel({ model: "gemini-pro" })
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
     const result = await model.generateContent(contextualPrompt)
     return result.response.text()
   } catch (error) {
@@ -340,7 +340,7 @@ export async function POST(request: NextRequest) {
     let imageAnalysis = null
     if (image) {
       try {
-        const visionModel = genAI.getGenerativeModel({ model: "gemini-pro-vision" })
+        const visionModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
         const result = await visionModel.generateContent([
           "Analyze this crop/plant image and provide detailed agricultural advice in " + language,
           { inlineData: { data: image.split(",")[1], mimeType: "image/jpeg" } },
