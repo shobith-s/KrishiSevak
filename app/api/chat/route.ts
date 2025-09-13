@@ -1,5 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { GoogleGenerativeAI } from "@google/generative-ai"
+import { WeatherService } from "@/lib/weather-service"
+import { MarketService } from "@/lib/market-service"
+import { KnowledgeBase } from "@/lib/knowledge-base"
+import { SeasonalCalendar } from "@/lib/seasonal-calendar"
 
 interface ChatMessage {
   role: "user" | "assistant" | "system"
@@ -46,10 +50,45 @@ function isRateLimited(key: string): boolean {
 
 const getSystemPrompt = (language: string): string => {
   const prompts = {
-    en: "You are a Digital Krishi Officer, an expert agricultural advisor. Provide practical, actionable advice for farmers. Focus on crop management, pest control, soil health, weather patterns, and sustainable farming practices. Keep responses concise and farmer-friendly.",
-    hi: "आप एक डिजिटल कृषि अधिकारी हैं, एक विशेषज्ञ कृषि सलाहकार। किसानों के लिए व्यावहारिक, कार्यान्वित सलाह प्रदान करें। फसल प्रबंधन, कीट नियंत्रण, मिट्टी स्वास्थ्य, मौसम पैटर्न और टिकाऊ कृषि प्रथाओं पर ध्यान दें।",
-    kn: "ನೀವು ಡಿಜಿಟಲ್ ಕೃಷಿ ಅಧಿಕಾರಿ, ಒಬ್ಬ ತಜ್ಞ ಕೃಷಿ ಸಲಹೆಗಾರ. ರೈತರಿಗೆ ಪ್ರಾಯೋಗಿಕವುം ನಟಪ್ಪಿಲಾಕ್ಕಾವುന್ನതುಮಾയ ಉಪದೇಶಂ ನൽಕುക. ಬೆಳೆ ನಿರ್ವಹಣೆ, ಕೀಟ ನಿಯಂತ್ರಣೆ, ಮಣ್ಣಿನ ಆರೋಗ್ಯ ಮತ್ತು ಸುಸ್ಥಿರ ಕೃಷಿ ಅಭ್ಯಾಸಗಳ ಮೇಲೆ ಗಮನಹರಿಸಿ।",
-    ml: "നിങ്ങൾ ഒരു ഡിജിറ്റൽ കൃഷി ഓഫീസറാണ്, ഒരു വിദഗ്ധ കാർഷിക ഉപദേശകൻ. കർഷകർക്ക് പ്രായോഗികവും നടപ്പിലാക്കാവുന്നതുമായ ഉപദേശം നൽകുക. വിള പരിാലനം, കീടനിയന്ത്രണം, മണ്ണിന്റെ ആരോഗ്യം, കാലാവസ്ഥാ രീതികൾ എന്നിവയിൽ ശ്രദ്ധ കേന്ദ്രീകരിക്കുക।",
+    en: `You are a Digital Krishi Officer, an expert agricultural advisor with access to real-time weather, market, knowledge base, and seasonal calendar data. 
+
+Core Capabilities:
+- Provide practical, actionable farming advice
+- Analyze weather patterns and their impact on crops
+- Share current market prices for agricultural commodities
+- Offer crop management, pest control, and soil health guidance
+- Suggest sustainable farming practices
+- Provide detailed agricultural knowledge
+- Offer seasonal farming calendar activities
+
+When users ask about weather, market prices, knowledge, or seasonal activities, I will provide you with current data. Use this information to give contextual, location-specific advice. Keep responses concise and farmer-friendly.`,
+
+    hi: `आप एक डिजिटल कृषि अधिकारी हैं, जिसके पास वास्तविक समय के मौसम, बाजार, ज्ञान आधार और ऋतु कैलेंडर डेटा तक पहुंच के साथ एक विशेषज्ञ कृषि सलाहकार हैं।
+
+मुख्य क्षमताएं:
+- व्यावहारिक, कार्यान्वित कृषि सलाह प्रदान करना
+- मौसम पैटर्न और फसलों पर उनके प्रभाव का विश्लेषण
+- कृषि वस्तुओं के लिए वर्तमान बाजार मूल्य साझा करना
+- फसल प्रबंधन, कीट नियंत्रण और मिट्टी स्वास्थ्य मार्गदर्शन
+- टिकाऊ कृषि प्रथाओं का सुझाव
+- विस्तृत कृषि ज्ञान प्रदान करना
+- ऋतु कैलेंडर कार्यक्रमों का सुझाव
+
+जब उपयोगकर्ता मौसम, बाजार मूल्यों, ज्ञान या ऋतु कार्यक्रमों के बारे में पूछते हैं, तो मैं आपको वर्तमान डेटा प्रदान करूंगा।`,
+
+    kn: `ನೀವು ಡಿಜಿಟಲ್ ಕೃಷಿ ಅಧಿಕಾರಿ, ನೈಜ-ಸಮಯದ ಹವಾಮಾನ, ಮಾರುಕಟ್ಟೆ, ಜ್ಞಾನ ಆಧಾರ ಮತ್ತು ಋತು ಕैಲೆಂಡರ್ ಡೇಟಾ ಪ್ರವೇಶದೊಂದಿಗೆ ತಜ್ಞ ಕೃಷಿ ಸಲಹೆಗಾರ.
+
+ಮುಖ್ಯ ಸಾಮರ್ಥ್ಯಗಳು:
+- ಪ್ರಾಯೋಗಿಕವುಂಟೆ, ಕಾರ್ಯಗತಗೊಳಿಸಬಹುದಾದ ಕೃಷಿ ಸಲಹೆ ನೀಡುವುದು
+- ಹವಾಮಾನ ಮಾದರಿಗಳು ಮತ್ತು ಬೆಳೆಗಳ ಮೇಲೆ ಅವುಗಳ ಪ್ರಭಾವವನ್ನು ವಿಶ್ಲೇಷಿಸುವುದು
+- ಕೃಷಿ ಸರಕುಗಳಿಗೆ ಪ್ರಸ್ತುತ ಮಾರುಕಟ್ಟೆ ಬೆಲೆಗಳನ್ನು ಹಂಚಿಕೊಳ್ಳುವುದು`,
+
+    ml: `നിങ്ങൾ ഒരു ഡിജിറ്റൽ കൃഷി ഓഫീസറാണ്, തത്സമയ കാലാവസ്ഥയും മാർക്കറ്റ് ഡാറ്റയും ജ്ഞാന ആശയം മാത്രയും സീസൺ കാലം കാലാവസ്ഥയും ആക്സസ് ചെയ്യാൻ കഴിയുന്ന ഒരു വിദഗ്ധ കാർഷിക ഉപദേശകൻ.
+
+പ്രധാന കഴിവുകൾ:
+- പ്രായോഗികവും നടപ്പിലാക്കാവുന്നതുമായ കാർഷിക ഉപദേശം നൽകുക
+- കാലാവസ്ഥാ രീതികളും വിളകളിൽ അവയുടെ സ്വാധീനവും വിശകലനം ചെയ്യുക
+- കാർഷിക ചരക്കുകളുടെ നിലവിലെ വിപണി വിലകൾ പങ്കിടുക`,
   }
   return prompts[language as keyof typeof prompts] || prompts.en
 }
@@ -77,11 +116,14 @@ const addMessageToContext = (sessionId: string, message: ChatMessage): void => {
   }
 }
 
-const callLLM = async (messages: ChatMessage[], language: string): Promise<string> => {
-  // ============================================================================
-  // 🔗 LLM INTEGRATION POINT - GEMINI AI (ACTIVE)
-  // ============================================================================
-
+const callLLM = async (
+  messages: ChatMessage[],
+  language: string,
+  weatherData?: string,
+  marketData?: string,
+  knowledgeData?: string,
+  seasonalData?: string,
+): Promise<string> => {
   try {
     // Convert messages to Gemini format
     const prompt = messages
@@ -90,37 +132,131 @@ const callLLM = async (messages: ChatMessage[], language: string): Promise<strin
       .join("\n")
 
     const systemPrompt = messages.find((m) => m.role === "system")?.content || ""
-    const fullPrompt = `${systemPrompt}\n\n${prompt}\n\nassistant:`
+
+    let contextualPrompt = `${systemPrompt}\n\n`
+
+    if (weatherData) {
+      contextualPrompt += `CURRENT WEATHER DATA:\n${weatherData}\n\n`
+    }
+
+    if (marketData) {
+      contextualPrompt += `CURRENT MARKET PRICES:\n${marketData}\n\n`
+    }
+
+    if (knowledgeData) {
+      contextualPrompt += `RELEVANT AGRICULTURAL KNOWLEDGE:\n${knowledgeData}\n\n`
+    }
+
+    if (seasonalData) {
+      contextualPrompt += `SEASONAL FARMING CALENDAR:\n${seasonalData}\n\n`
+    }
+
+    contextualPrompt += `INSTRUCTIONS: Use the provided data to give specific, actionable advice. Reference the data sources when relevant. Keep responses practical and farmer-friendly.\n\n`
+    contextualPrompt += `${prompt}\n\nassistant:`
 
     const model = genAI.getGenerativeModel({ model: "gemini-pro" })
-    const result = await model.generateContent(fullPrompt)
+    const result = await model.generateContent(contextualPrompt)
     return result.response.text()
   } catch (error) {
     console.error("Gemini API Error:", error)
     throw new Error("Failed to get response from Gemini AI")
   }
+}
 
-  // ============================================================================
-  // 🔗 OPENAI INTEGRATION (COMMENTED FOR FUTURE USE)
-  // ============================================================================
-  //
-  // Uncomment this section when you want to switch to OpenAI:
-  //
-  // try {
-  //   const { OpenAI } = require('openai')
-  //   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-  //   const completion = await openai.chat.completions.create({
-  //     model: "gpt-4",
-  //     messages: messages,
-  //     temperature: 0.7,
-  //     max_tokens: 1000
-  //   })
-  //   return completion.choices[0].message.content || "Sorry, I couldn't generate a response."
-  // } catch (error) {
-  //   console.error('OpenAI API Error:', error)
-  //   throw new Error('Failed to get response from OpenAI')
-  // }
-  // ============================================================================
+const detectDataNeeds = (
+  message: string,
+): {
+  needsWeather: boolean
+  needsMarket: boolean
+  needsKnowledge: boolean
+  needsSeasonal: boolean
+  location?: string
+  commodity?: string
+  knowledgeQuery?: string
+} => {
+  const lowerMessage = message.toLowerCase()
+
+  // Weather keywords
+  const weatherKeywords = [
+    "weather",
+    "rain",
+    "temperature",
+    "humidity",
+    "forecast",
+    "climate",
+    "मौसम",
+    "बारिश",
+    "तापमान",
+    "हवಾಮಾನ",
+    "ಮಳೆ",
+    "കಾಲಾವಸ್ಥ",
+    "ಮഴ",
+  ]
+  const needsWeather = weatherKeywords.some((keyword) => lowerMessage.includes(keyword))
+
+  // Market keywords
+  const marketKeywords = [
+    "price",
+    "market",
+    "sell",
+    "buy",
+    "cost",
+    "rate",
+    "mandi",
+    "बाजार",
+    "मूल्य",
+    "दाम",
+    "ಮಾರುಕಟ್ಟೆ",
+    "ಬೆಲೆ",
+    "വിപണി",
+    "വില",
+  ]
+  const needsMarket = marketKeywords.some((keyword) => lowerMessage.includes(keyword))
+
+  // Knowledge keywords
+  const knowledgeKeywords = [
+    "how to",
+    "cultivation",
+    "farming",
+    "pest",
+    "disease",
+    "fertilizer",
+    "soil",
+    "crop",
+    "खेती",
+    "कृषि",
+    "फसल",
+    "ಕೃಷಿ",
+    "ಬೆಳೆ",
+    "കൃഷി",
+    "വിള",
+  ]
+  const needsKnowledge = knowledgeKeywords.some((keyword) => lowerMessage.includes(keyword))
+
+  // Seasonal keywords
+  const seasonalKeywords = ["season", "month", "when to", "timing", "calendar", "मौसम", "समय", "ಋತು", "സീസൺ"]
+  const needsSeasonal = seasonalKeywords.some((keyword) => lowerMessage.includes(keyword))
+
+  // Extract location (simple pattern matching)
+  const locationMatch = message.match(/(?:in|at|near|from)\s+([A-Za-z\s]+?)(?:\s|$|,|\?)/i)
+  const location = locationMatch ? locationMatch[1].trim() : undefined
+
+  // Extract commodity
+  const commodities = MarketService.getPopularCommodities()
+  const commodity = commodities.find((c) => lowerMessage.includes(c.toLowerCase()))
+
+  // Extract knowledge query (use the original message for better context)
+  const knowledgeQuery = needsKnowledge ? message : undefined
+
+  return {
+    needsWeather,
+    needsMarket,
+    needsKnowledge,
+    needsSeasonal,
+    location,
+    commodity,
+    knowledgeQuery,
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -155,11 +291,43 @@ export async function POST(request: NextRequest) {
     }
     addMessageToContext(sessionId, userMessage)
 
-    // ============================================================================
-    // 🔗 MAIN API INTEGRATION POINT - LLM SERVICE CALL
-    // ============================================================================
-    // This is where the actual LLM service gets called with the conversation context
-    const llmResponse = await callLLM(context.messages, language)
+    const dataNeeds = detectDataNeeds(message)
+    let weatherData: string | undefined
+    let marketData: string | undefined
+    let knowledgeData: string | undefined
+    let seasonalData: string | undefined
+
+    if (dataNeeds.needsWeather && dataNeeds.location) {
+      const weatherResponse = await WeatherService.getCurrentWeather(dataNeeds.location)
+      if (weatherResponse.success && weatherResponse.data) {
+        weatherData = WeatherService.formatWeatherForAI(weatherResponse.data, language)
+      }
+    }
+
+    if (dataNeeds.needsMarket && dataNeeds.commodity) {
+      const marketResponse = await MarketService.getCommodityPrices(dataNeeds.commodity, dataNeeds.location)
+      if (marketResponse.success && marketResponse.data) {
+        marketData = MarketService.formatMarketDataForAI(marketResponse.data, language)
+      }
+    }
+
+    // Fetch knowledge base data if needed
+    if (dataNeeds.needsKnowledge && dataNeeds.knowledgeQuery) {
+      const knowledgeResponse = await KnowledgeBase.searchKnowledge(dataNeeds.knowledgeQuery, language)
+      if (knowledgeResponse.success && knowledgeResponse.data && knowledgeResponse.data.length > 0) {
+        knowledgeData = KnowledgeBase.formatKnowledgeForAI(knowledgeResponse.data, language)
+      }
+    }
+
+    // Fetch seasonal data if needed
+    if (dataNeeds.needsSeasonal) {
+      const currentActivity = SeasonalCalendar.getCurrentMonthActivities(language)
+      if (currentActivity) {
+        seasonalData = SeasonalCalendar.formatSeasonalDataForAI(currentActivity, language)
+      }
+    }
+
+    const llmResponse = await callLLM(context.messages, language, weatherData, marketData, knowledgeData, seasonalData)
 
     const assistantMessage: ChatMessage = {
       role: "assistant",
@@ -168,12 +336,9 @@ export async function POST(request: NextRequest) {
     }
     addMessageToContext(sessionId, assistantMessage)
 
+    // Image analysis code
     let imageAnalysis = null
     if (image) {
-      // ============================================================================
-      // 🔗 IMAGE ANALYSIS INTEGRATION POINT - GEMINI VISION (ACTIVE)
-      // ============================================================================
-
       try {
         const visionModel = genAI.getGenerativeModel({ model: "gemini-pro-vision" })
         const result = await visionModel.generateContent([
@@ -185,27 +350,6 @@ export async function POST(request: NextRequest) {
         console.error("Gemini Vision Error:", error)
         imageAnalysis = "Image analysis temporarily unavailable. Please try again later."
       }
-
-      // ============================================================================
-      // 🔗 OPENAI VISION INTEGRATION (COMMENTED FOR FUTURE USE)
-      // ============================================================================
-      //
-      // Uncomment this section when you want to use OpenAI Vision:
-      //
-      // try {
-      //   const visionResponse = await openai.chat.completions.create({
-      //     model: "gpt-4-vision-preview",
-      //     messages: [{ role: "user", content: [
-      //       { type: "text", text: `Analyze this agricultural image and provide farming advice in ${language}` },
-      //       { type: "image_url", image_url: { url: image } }
-      //     ]}]
-      //   })
-      //   imageAnalysis = visionResponse.choices[0].message.content
-      // } catch (error) {
-      //   console.error('OpenAI Vision Error:', error)
-      //   imageAnalysis = "Image analysis temporarily unavailable."
-      // }
-      // ============================================================================
     }
 
     const response = {
@@ -216,6 +360,12 @@ export async function POST(request: NextRequest) {
       timestamp: new Date().toISOString(),
       requestId: crypto.randomUUID(),
       contextLength: context.messages.length,
+      dataSources: {
+        weather: !!weatherData,
+        market: !!marketData,
+        knowledge: !!knowledgeData,
+        seasonal: !!seasonalData,
+      },
     }
 
     return NextResponse.json(response)
