@@ -1,4 +1,7 @@
 backend/.venv
 backend/.env
-backend/datasets
+backend/dataset
 backend/temp_uploads
+backend/__pycache__
+backend/db
+backend/documents

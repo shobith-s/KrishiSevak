@@ -1,145 +1,173 @@
-# backend/main.py
-
-from groq import Groq
+import os
+import json
+import shutil
+import logging
+from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from dotenv import load_dotenv
-import shutil
-import os
-import logging
+from groq import Groq
+import chromadb
+from sentence_transformers import SentenceTransformer
+
+# Import our custom modules
 from classifier import classify_real_image
+from tools import get_weather, get_market_price
 
-# --- Load Environment Variables ---
+# --- INITIALIZATION ---
 load_dotenv()
-
-# --- Basic Logging Setup ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# --- FastAPI App Initialization ---
-app = FastAPI(title="Digital Agriculture Officer API")
-
-# --- API KEY VALIDATION ---
+# --- API KEY & MODEL VALIDATION ---
 api_key = os.environ.get("GROQ_API_KEY")
 if not api_key:
-    raise ValueError("GROQ_API_KEY not found in .env file. Please create a .env file in the backend folder and add your key.")
-
-# --- Groq Client Initialization ---
-client = Groq(api_key=api_key)
-
+    raise ValueError("GROQ_API_KEY not found in .env file.")
+# Using a stable, fast model to ensure availability.
 MODEL_NAME = "llama-3.3-70b-versatile"
 
-# --- CORS Middleware ---
-origins = ["http://localhost:3000"]
+# --- CLIENTS INITIALIZATION ---
+app = FastAPI(title="Digital Agriculture Officer API")
+groq_client = Groq(api_key=api_key)
+
+# Initialize the RAG components
+try:
+    db_client = chromadb.PersistentClient(path="db")
+    embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+    collection = db_client.get_collection("local_knowledge")
+    RAG_ENABLED = True
+    logger.info("RAG system initialized successfully.")
+except Exception as e:
+    RAG_ENABLED = False
+    logger.warning(f"RAG system failed to initialize: {e}. It will be disabled.")
+
+# --- CORS MIDDLEWARE ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# --- Pydantic Models ---
+# --- DATA MODELS ---
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
 class ChatRequest(BaseModel):
-    message: str
+    history: list[ChatMessage]
     language: str = "English"
 
-# --- API Endpoints ---
+# --- TOOL DEFINITIONS ---
+tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_weather",
+            "description": "Get the current weather for a specific city in India.",
+            "parameters": {
+                "type": "object",
+                "properties": {"city": {"type": "string", "description": "The city name, e.g., Mysuru"}},
+                "required": ["city"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_market_price",
+            "description": "Get the latest wholesale market price for a specific agricultural commodity in a given market.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "commodity": {"type": "string", "description": "The agricultural commodity, e.g., Onion, Coconut"},
+                    "market": {"type": "string", "description": "The market name, e.g., Mysore, Hubli"},
+                },
+                "required": ["commodity"],
+            },
+        },
+    },
+]
+
+# --- API ENDPOINTS ---
 @app.get("/")
 def read_root():
-    return {"status": "Digital Agriculture Officer API is running with Groq."}
+    return {"status": "Digital Agriculture Officer API is running."}
 
 @app.post("/chat")
 async def handle_chat(request: ChatRequest):
-    # This function remains unchanged and works well.
-    logger.info(f"Received Groq chat request: '{request.message}' in {request.language}")
+    # This line is corrected to be compatible with different Pydantic versions.
+    messages = [msg.dict() for msg in request.history]
     try:
-        system_prompt = f"""You are a helpful Digital Agriculture Officer.
-        Your entire response MUST be in the user's selected language, which is {request.language}.
-        Do not apologize, refuse, or switch languages. Respond directly and concisely in {request.language}."""
+        # Step 1: Check if a tool needs to be called
+        initial_response = groq_client.chat.completions.create(model=MODEL_NAME, messages=messages, tools=tools, tool_choice="auto")
+        response_message = initial_response.choices[0].message
+        tool_calls = response_message.tool_calls
+
+        # Step 2: If a tool is called, execute it
+        if tool_calls:
+            available_tools = {"get_weather": get_weather, "get_market_price": get_market_price}
+            function_name = tool_calls[0].function.name
+            function_to_call = available_tools[function_name]
+            function_args = json.loads(tool_calls[0].function.arguments)
+            function_response = function_to_call(**function_args)
+            
+            messages.append(response_message)
+            messages.append({"role": "tool", "tool_call_id": tool_calls[0].id, "name": function_name, "content": function_response})
+            
+            # Step 3: Call the model again with the tool's result
+            final_response = groq_client.chat.completions.create(model=MODEL_NAME, messages=messages)
+            return {"reply": final_response.choices[0].message.content}
+
+        # Step 4: If no tool is called, proceed with RAG and general chat
+        user_query = messages[-1]['content']
+        context = ""
+        if RAG_ENABLED:
+            try:
+                results = collection.query(query_texts=[user_query], n_results=1)
+                if results.get('documents') and results['documents'][0]:
+                    context = "\n\nUse this local context to answer:\n--- CONTEXT ---\n" + "\n".join(results['documents'][0]) + "\n--- END CONTEXT ---"
+            except Exception as e:
+                logger.error(f"Error querying RAG DB: {e}")
+
+        system_prompt = f"You are a helpful Digital Agriculture Officer. Your entire response MUST be in {request.language}.{context}"
+        final_messages = [{"role": "system", "content": system_prompt}] + [msg for msg in messages if msg['role'] != 'system']
         
-        chat_completion = client.chat.completions.create(
-            messages=[
-                {'role': 'system', 'content': system_prompt},
-                {'role': 'user', 'content': request.message},
-            ],
-            model=MODEL_NAME,
-        )
-        response_content = chat_completion.choices[0].message.content
-        logger.info("Successfully received response from Groq.")
-        return {"reply": response_content}
+        chat_completion = groq_client.chat.completions.create(model=MODEL_NAME, messages=final_messages)
+        return {"reply": chat_completion.choices[0].message.content}
     except Exception as e:
-        logger.error(f"Error communicating with Groq: {e}")
-        raise HTTPException(status_code=500, detail="Error communicating with the AI model.")
+        logger.error(f"An error occurred in /chat endpoint: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get a response from the AI model.")
 
 DIAGNOSIS_HEADERS = {
     "English": {"identification": "Identification", "actions": "Immediate Actions", "treatment": "Treatment Plan", "prevention": "Prevention Tips"},
     "Kannada": {"identification": "ಗುರುತಿಸುವಿಕೆ", "actions": "ತಕ್ಷಣದ ಕ್ರಮಗಳು", "treatment": "ಚಿಕಿತ್ಸಾ ಯೋಜನೆ", "prevention": "ತಡೆಗಟ್ಟುವಿಕೆ ಸಲಹೆಗಳು"},
-    "Malayalam": {"identification": "തിരിച്ചറിയൽ", "actions": "ഉടനടി സ്വീകരിക്കേണ്ട നടപടികൾ", "treatment": "ചികിത്സാ പദ്ധതി", "prevention": "പ്രതിരോധത്തിനുള്ള നുറുങ്ങുകൾ"}
+    "Malayalam": {"identification": "ತಿരിച്ചറിയൽ", "actions": "ഉടനടി സ്വീകരിക്കേണ്ട നടപടികൾ", "treatment": "ചികിത്സാ പദ്ധതി", "prevention": "പ്രതിരോധത്തിനുള്ള നുറുങ്ങുകൾ"}
 }
 
 @app.post("/diagnose")
-async def handle_diagnose(
-    file: UploadFile = File(...),
-    language: str = Form("English")
-):
+async def handle_diagnose(file: UploadFile = File(...), language: str = Form("English")):
     temp_dir = "temp_uploads"
     os.makedirs(temp_dir, exist_ok=True)
     file_path = os.path.join(temp_dir, file.filename)
-    
     try:
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-        logger.info(f"Temporarily saved uploaded file to: {file_path}")
     except Exception as e:
         raise HTTPException(status_code=500, detail="Could not save file.")
-
     try:
         result = classify_real_image(file_path)
         disease, confidence = result["disease"], result["confidence"]
         headers = DIAGNOSIS_HEADERS.get(language, DIAGNOSIS_HEADERS["English"])
-
-        # --- NEW, SMARTER PROMPT ---
-        # This gives the AI clear conditional logic to follow.
-        prompt = f"""
-        You are an expert Digital Agriculture Officer. An image has been analyzed, and the object is identified as: "{disease}".
-
-        **Your Task:**
-        Based on this identification, provide a simple and helpful advisory to a farmer in **{language}**.
-
-        **Follow these rules precisely:**
-
-        1.  **Is "{disease}" a plant, fruit, vegetable, or a known pest?**
-            * **If YES:** Write a helpful agricultural advisory using the following Markdown structure with the provided headers:
-                - ## {headers['identification']}
-                - ## {headers['actions']}
-                - ## {headers['treatment']}
-                - ## {headers['prevention']}
-            * **If NO (e.g., it's a car, a tool, an animal):** Simply state in a friendly tone what you see and mention that it does not appear to be a crop issue. Do not use the headers. For example: "The image appears to show a {disease}. This does not seem to be a crop-related problem."
-
-        2.  **LANGUAGE:** Your entire response must be in **{language}**. Do not use any other language.
-        3.  **TONE:** Be friendly, simple, and direct.
-        """
-
-        logger.info("Sending new, smarter diagnosis prompt to Groq.")
-        chat_completion = client.chat.completions.create(
-            messages=[{'role': 'user', 'content': prompt}],
-            model=MODEL_NAME,
-        )
+        prompt = f"""An image analysis model identified: '{disease}' ({confidence:.0%} confidence). Your task is to act as an expert Digital Agriculture Officer. Based ONLY on this identification, provide a helpful advisory. IMPORTANT RULES: 1. YOUR ENTIRE RESPONSE MUST BE IN {language} ONLY. 2. USE MARKDOWN FOR FORMATTING: Use headings (##), bold text (**), and lists (-). 3. If the object is a plant-related issue, provide a full advisory using the provided headers. 4. If the object is NOT a plant-related issue, simply state what you see and mention that it does not appear to be a crop problem. Structure the advisory using these exact headers in {language} if applicable: - ## {headers['identification']} - ## {headers['actions']} - ## {headers['treatment']} - ## {headers['prevention']}"""
+        chat_completion = groq_client.chat.completions.create(messages=[{'role': 'user', 'content': prompt}], model=MODEL_NAME)
         response_content = chat_completion.choices[0].message.content
-        logger.info("Successfully received advisory from Groq.")
-        
-        return {
-            "detected_disease": disease,
-            "confidence": confidence,
-            "advisory": response_content
-        }
+        return {"detected_disease": disease, "confidence": confidence, "advisory": response_content}
     except Exception as e:
-        logger.error(f"Error during Groq diagnosis process: {e}")
-        raise HTTPException(status_code=500, detail="An error occurred during the diagnosis.")
+        logger.error(f"An error occurred in /diagnose endpoint: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to process the image.")
     finally:
         if os.path.exists(file_path):
             os.remove(file_path)
-            logger.info(f"Removed temporary file: {file_path}")
 

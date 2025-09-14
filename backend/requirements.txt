@@ -8,3 +8,7 @@ groq
 python-dotenv
 torch
 torchvision
+tqdm
+chromadb
+sentence-transformers
+requests
