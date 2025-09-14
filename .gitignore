@@ -1,0 +1,4 @@
+backend/.venv
+backend/.env
+backend/datasets
+backend/temp_uploads

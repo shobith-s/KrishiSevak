@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+python-multipart
+Pillow
+fastapi-cors
+pydantic
+groq
+python-dotenv
+torch
+torchvision
