@@ -5,3 +5,4 @@ backend/temp_uploads
 backend/__pycache__
 backend/db
 backend/documents
+plant_disease_classifier.pth
