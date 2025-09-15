@@ -154,7 +154,7 @@ This project serves as a powerful foundation. The next logical steps to expand i
 * **WhatsApp Bot:** Integrate the AI agent with the WhatsApp Business API to make it accessible on the most popular messaging platform in India.
 * **IVR Phone Support:** Create an Interactive Voice Response (IVR) system that allows farmers without smartphones to call a number and interact with the AI over a standard phone call.
 * **Persistent Memory:** Integrate a cloud database like Firebase Firestore to save user chat histories, allowing for long-term memory and personalization.
-* **Model Expansion:** Continuously train and expand the image classifier with more diverse, locally sourced images to improve its accuracy and cover more crops and diseases.
+* **Model Expansion:** Continuously train and expand the image classifier with more diverse, locally sourced images to improve its accuracy and cover more crops and diseases.   
 
 ---
 
