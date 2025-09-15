@@ -487,7 +487,6 @@ export function KrishiOfficerChat() {
                   onChange={handleImageUpload}
                   accept="image/*"
                   className="hidden"
-                  title="Upload crop image"
                 />
 
                 <Button

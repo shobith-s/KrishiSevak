@@ -125,6 +125,15 @@ const callLLM = async (
   seasonalData?: string,
 ): Promise<string> => {
   try {
+    console.log("[v0] Starting LLM call...")
+    console.log("[v0] GEMINI_API_KEY exists:", !!process.env.GEMINI_API_KEY)
+    console.log("[v0] GEMINI_API_KEY length:", process.env.GEMINI_API_KEY?.length || 0)
+    console.log("[v0] Messages count:", messages.length)
+
+    if (!process.env.GEMINI_API_KEY) {
+      throw new Error("GEMINI_API_KEY is not configured")
+    }
+
     // Convert messages to Gemini format
     const prompt = messages
       .filter((m) => m.role !== "system")
@@ -154,12 +163,45 @@ const callLLM = async (
     contextualPrompt += `INSTRUCTIONS: Use the provided data to give specific, actionable advice. Reference the data sources when relevant. Keep responses practical and farmer-friendly.\n\n`
     contextualPrompt += `${prompt}\n\nassistant:`
 
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
-    const result = await model.generateContent(contextualPrompt)
-    return result.response.text()
+    console.log("[v0] Prompt length:", contextualPrompt.length)
+    console.log("[v0] Making Gemini API call...")
+
+    let model
+    try {
+      model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
+      console.log("[v0] Model initialized successfully")
+    } catch (modelError) {
+      console.error("[v0] Model initialization error:", modelError)
+      throw new Error("Failed to initialize Gemini model")
+    }
+
+    let result
+    try {
+      result = await model.generateContent(contextualPrompt)
+      console.log("[v0] Gemini API call successful")
+    } catch (apiError) {
+      console.error("[v0] Gemini API call error:", apiError)
+      console.error("[v0] API Error details:", {
+        message: apiError instanceof Error ? apiError.message : "Unknown error",
+        stack: apiError instanceof Error ? apiError.stack : undefined,
+      })
+      throw new Error(`Gemini API call failed: ${apiError instanceof Error ? apiError.message : "Unknown error"}`)
+    }
+
+    try {
+      const responseText = result.response.text()
+      console.log("[v0] Response text length:", responseText.length)
+      return responseText
+    } catch (parseError) {
+      console.error("[v0] Response parsing error:", parseError)
+      throw new Error("Failed to parse Gemini response")
+    }
   } catch (error) {
-    console.error("Gemini API Error:", error)
-    throw new Error("Failed to get response from Gemini AI")
+    console.error("[v0] LLM Error details:", error)
+    console.error("[v0] Error type:", typeof error)
+    console.error("[v0] Error message:", error instanceof Error ? error.message : "Unknown error")
+    console.error("[v0] Error stack:", error instanceof Error ? error.stack : undefined)
+    throw error // Re-throw to be caught by the main handler
   }
 }
 
@@ -189,7 +231,7 @@ const detectDataNeeds = (
     "तापमान",
     "हवಾಮಾನ",
     "ಮಳೆ",
-    "കಾಲಾವಸ್ಥ",
+    "ಕಾಲಾವಸ್ಥ",
     "ಮഴ",
   ]
   const needsWeather = weatherKeywords.some((keyword) => lowerMessage.includes(keyword))
@@ -261,6 +303,8 @@ const detectDataNeeds = (
 
 export async function POST(request: NextRequest) {
   try {
+    console.log("[v0] API route called")
+
     const rateLimitKey = getRateLimitKey(request)
     if (isRateLimited(rateLimitKey)) {
       return NextResponse.json({ success: false, error: "Too many requests. Please try again later." }, { status: 429 })
@@ -268,6 +312,13 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     const { message, language = "en", image, sessionId = crypto.randomUUID() } = body
+
+    console.log("[v0] Request body parsed:", {
+      message: message?.substring(0, 50),
+      language,
+      hasImage: !!image,
+      sessionId,
+    })
 
     if (!message || typeof message !== "string" || message.trim().length === 0) {
       return NextResponse.json({ success: false, error: "Message is required" }, { status: 400 })
@@ -282,6 +333,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Invalid language" }, { status: 400 })
     }
 
+    console.log("[v0] Validation passed, getting context...")
     const context = getOrCreateContext(sessionId, language)
 
     const userMessage: ChatMessage = {
@@ -291,42 +343,70 @@ export async function POST(request: NextRequest) {
     }
     addMessageToContext(sessionId, userMessage)
 
+    console.log("[v0] Detecting data needs...")
     const dataNeeds = detectDataNeeds(message)
+    console.log("[v0] Data needs:", dataNeeds)
+
     let weatherData: string | undefined
     let marketData: string | undefined
     let knowledgeData: string | undefined
     let seasonalData: string | undefined
 
     if (dataNeeds.needsWeather && dataNeeds.location) {
-      const weatherResponse = await WeatherService.getCurrentWeather(dataNeeds.location)
-      if (weatherResponse.success && weatherResponse.data) {
-        weatherData = WeatherService.formatWeatherForAI(weatherResponse.data, language)
+      try {
+        console.log("[v0] Fetching weather data for:", dataNeeds.location)
+        const weatherResponse = await WeatherService.getCurrentWeather(dataNeeds.location)
+        if (weatherResponse.success && weatherResponse.data) {
+          weatherData = WeatherService.formatWeatherForAI(weatherResponse.data, language)
+          console.log("[v0] Weather data fetched successfully")
+        }
+      } catch (weatherError) {
+        console.error("[v0] Weather service error:", weatherError)
       }
     }
 
     if (dataNeeds.needsMarket && dataNeeds.commodity) {
-      const marketResponse = await MarketService.getCommodityPrices(dataNeeds.commodity, dataNeeds.location)
-      if (marketResponse.success && marketResponse.data) {
-        marketData = MarketService.formatMarketDataForAI(marketResponse.data, language)
+      try {
+        console.log("[v0] Fetching market data for:", dataNeeds.commodity)
+        const marketResponse = await MarketService.getCommodityPrices(dataNeeds.commodity, dataNeeds.location)
+        if (marketResponse.success && marketResponse.data) {
+          marketData = MarketService.formatMarketDataForAI(marketResponse.data, language)
+          console.log("[v0] Market data fetched successfully")
+        }
+      } catch (marketError) {
+        console.error("[v0] Market service error:", marketError)
       }
     }
 
     // Fetch knowledge base data if needed
     if (dataNeeds.needsKnowledge && dataNeeds.knowledgeQuery) {
-      const knowledgeResponse = await KnowledgeBase.searchKnowledge(dataNeeds.knowledgeQuery, language)
-      if (knowledgeResponse.success && knowledgeResponse.data && knowledgeResponse.data.length > 0) {
-        knowledgeData = KnowledgeBase.formatKnowledgeForAI(knowledgeResponse.data, language)
+      try {
+        console.log("[v0] Fetching knowledge data for:", dataNeeds.knowledgeQuery)
+        const knowledgeResponse = await KnowledgeBase.searchKnowledge(dataNeeds.knowledgeQuery, language)
+        if (knowledgeResponse.success && knowledgeResponse.data && knowledgeResponse.data.length > 0) {
+          knowledgeData = KnowledgeBase.formatKnowledgeForAI(knowledgeResponse.data, language)
+          console.log("[v0] Knowledge data fetched successfully")
+        }
+      } catch (knowledgeError) {
+        console.error("[v0] Knowledge service error:", knowledgeError)
       }
     }
 
     // Fetch seasonal data if needed
     if (dataNeeds.needsSeasonal) {
-      const currentActivity = SeasonalCalendar.getCurrentMonthActivities(language)
-      if (currentActivity) {
-        seasonalData = SeasonalCalendar.formatSeasonalDataForAI(currentActivity, language)
+      try {
+        console.log("[v0] Fetching seasonal data...")
+        const currentActivity = SeasonalCalendar.getCurrentMonthActivities(language)
+        if (currentActivity) {
+          seasonalData = SeasonalCalendar.formatSeasonalDataForAI(currentActivity, language)
+          console.log("[v0] Seasonal data fetched successfully")
+        }
+      } catch (seasonalError) {
+        console.error("[v0] Seasonal service error:", seasonalError)
       }
     }
 
+    console.log("[v0] Calling LLM...")
     const llmResponse = await callLLM(context.messages, language, weatherData, marketData, knowledgeData, seasonalData)
 
     const assistantMessage: ChatMessage = {
@@ -340,14 +420,16 @@ export async function POST(request: NextRequest) {
     let imageAnalysis = null
     if (image) {
       try {
+        console.log("[v0] Processing image analysis...")
         const visionModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
         const result = await visionModel.generateContent([
           "Analyze this crop/plant image and provide detailed agricultural advice in " + language,
           { inlineData: { data: image.split(",")[1], mimeType: "image/jpeg" } },
         ])
         imageAnalysis = result.response.text()
+        console.log("[v0] Image analysis completed")
       } catch (error) {
-        console.error("Gemini Vision Error:", error)
+        console.error("[v0] Gemini Vision Error:", error)
         imageAnalysis = "Image analysis temporarily unavailable. Please try again later."
       }
     }
@@ -368,14 +450,25 @@ export async function POST(request: NextRequest) {
       },
     }
 
+    console.log("[v0] Sending successful response")
     return NextResponse.json(response)
   } catch (error) {
-    console.error("Chat API Error:", error)
+    console.error("[v0] Chat API Error:", error)
+    console.error("[v0] Error type:", typeof error)
+    console.error("[v0] Error message:", error instanceof Error ? error.message : "Unknown error")
+    console.error("[v0] Error stack:", error instanceof Error ? error.stack : undefined)
+
     return NextResponse.json(
       {
         success: false,
         error: "Internal server error. Please try again later.",
         timestamp: new Date().toISOString(),
+        ...(process.env.NODE_ENV === "development" && {
+          debugInfo: {
+            errorMessage: error instanceof Error ? error.message : "Unknown error",
+            errorType: typeof error,
+          },
+        }),
       },
       { status: 500 },
     )
