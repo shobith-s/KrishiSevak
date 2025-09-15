@@ -5,7 +5,7 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-def get_weather(city: str = "Mysuru", days: int = 1) -> str:
+def get_weather(city: str = "Mysuru", days: str = "1") -> str:
     """
     Fetches the weather forecast for a specified city in India from WeatherAPI.com.
     """
@@ -13,8 +13,8 @@ def get_weather(city: str = "Mysuru", days: int = 1) -> str:
     if not api_key:
         return "Error: Weather API key is not configured."
 
-    # --- BUG FIX ---
-    # The AI sometimes sends 'days' as a string. We convert it to an integer to be safe.
+    # --- Defensive Type Conversion ---
+    # The AI sometimes sends 'days' as a string. We safely convert it to an integer.
     try:
         num_days = int(days)
     except (ValueError, TypeError):
@@ -72,7 +72,7 @@ def get_market_price(commodity: str, state: str = "Karnataka", market: str = Non
             response = requests.get(api_url, params=params)
             response.raise_for_status()
             data = response.json()
-            if data['records']:
+            if data.get('records'):
                 latest_record = max(data['records'], key=lambda x: datetime.strptime(x['arrival_date'], '%d/%m/%Y'))
                 return (f"Latest price for {latest_record['commodity']} in {latest_record['market']} (on {latest_record['arrival_date']}): "
                         f"₹{latest_record['modal_price']} per Quintal.")
@@ -90,7 +90,7 @@ def get_market_price(commodity: str, state: str = "Karnataka", market: str = Non
         response = requests.get(api_url, params=params)
         response.raise_for_status()
         data = response.json()
-        if data['records']:
+        if data.get('records'):
             latest_record = max(data['records'], key=lambda x: datetime.strptime(x['arrival_date'], '%d/%m/%Y'))
             return (f"Sorry, I couldn't find recent data for '{commodity}' specifically in the '{market or 'specified'}' market. "
                     f"However, here are the latest prices from other markets in {state}:\n"
@@ -100,4 +100,3 @@ def get_market_price(commodity: str, state: str = "Karnataka", market: str = Non
         return f"Sorry, there was an error connecting to the market price service."
 
     return f"Sorry, I couldn't find any recent price data for '{commodity}' in any market in {state}. Please check the commodity spelling or try again later."
-

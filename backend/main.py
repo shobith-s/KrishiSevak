@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 api_key = os.environ.get("GROQ_API_KEY")
 if not api_key:
     raise ValueError("GROQ_API_KEY not found in .env file. Please create a .env file in the backend folder and add your key.")
+# Using a stable, fast model that is confirmed to be available.
 MODEL_NAME = "llama-3.3-70b-versatile"
 
 # --- CLIENTS INITIALIZATION ---
@@ -43,7 +44,7 @@ except Exception as e:
 # --- CORS MIDDLEWARE ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -58,7 +59,7 @@ class ChatRequest(BaseModel):
     history: list[ChatMessage]
     language: str = "English"
 
-# --- TOOL DEFINITIONS (UPGRADED) ---
+# --- TOOL DEFINITIONS ---
 tools = [
     {
         "type": "function",
@@ -69,7 +70,8 @@ tools = [
                 "type": "object",
                 "properties": {
                     "city": {"type": "string", "description": "The city name, e.g., Mysuru"},
-                    "days": {"type": "integer", "description": "Number of days for the forecast, from 1 (current) to 3. Defaults to 1."},
+                    # BUG FIX: Changed type to string to prevent validation error
+                    "days": {"type": "string", "description": "Number of days for the forecast, from '1' (current) to '3'. Defaults to '1'."},
                 },
                 "required": ["city"],
             },
@@ -100,15 +102,16 @@ def read_root():
 
 @app.post("/chat")
 async def handle_chat(request: ChatRequest):
+    # BUG FIX: Use .dict() for compatibility with Pydantic v1/v2
     messages = [msg.dict() for msg in request.history]
     try:
-        # --- UNIFIED SYSTEM PROMPT ---
-        system_prompt = f"""You are a helpful Digital Agriculture Officer. The user's preferred language is {request.language}.
+        # --- FINAL, UNIFIED SYSTEM PROMPT ---
+        system_prompt = f"""You are a helpful Digital Agriculture Officer. A user has selected their preferred language as {request.language}.
 
-        IMPORTANT RULES:
-        1.  **STRICT LANGUAGE:** You MUST reply in {request.language}, even if the user asks in English.
-        2.  **HANDLE TOOL ERRORS:** If a tool returns an error or 'not found' message, translate that message into {request.language} and present it to the user.
-        3.  **IGNORE OLD CONTEXT:** If you use a tool and the user asks a new, unrelated question, ignore the previous tool result.
+        IMPORTANT AND FINAL RULES:
+        1.  **STRICT LANGUAGE:** Your entire response MUST BE in {request.language}. Even if the user asks a question in English, you must reply in {request.language}. Do not switch languages for any reason.
+        2.  **HANDLE TOOL ERRORS:** If a tool (like weather or market price) returns a 'sorry' or 'error' message, you MUST translate that specific message into {request.language} and present it clearly to the user.
+        3.  **IGNORE OLD CONTEXT:** If you use a tool and the user asks a new, unrelated question, you MUST ignore the previous tool's result and answer the new question directly.
         """
         
         messages_with_system_prompt = [{"role": "system", "content": system_prompt}] + messages
@@ -125,12 +128,6 @@ async def handle_chat(request: ChatRequest):
             function_to_call = available_tools[function_name]
             function_args = json.loads(tool_calls[0].function.arguments)
             
-            # Handle default arguments for our functions
-            if function_name == "get_market_price" and "market" not in function_args:
-                function_args["market"] = None
-            if function_name == "get_weather" and "days" not in function_args:
-                function_args["days"] = 1 # Default to current weather
-
             function_response = function_to_call(**function_args)
             
             messages.append(response_message)
