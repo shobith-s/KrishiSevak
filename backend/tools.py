@@ -5,96 +5,96 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-# --- Weather Tool (No Changes) ---
-def get_weather(city: str = "Mysuru") -> str:
-    """Fetches the current weather for a specified city from WeatherAPI.com."""
+def get_weather(city: str = "Mysuru", days: int = 1) -> str:
+    """
+    Fetches the weather forecast for a specified city in India from WeatherAPI.com.
+    Can fetch either the current weather (days=1) or a forecast for up to 3 days.
+    """
     api_key = os.environ.get("WEATHERAPI_API_KEY")
     if not api_key:
-        logger.error("WeatherAPI.com key is not configured.")
         return "Error: Weather API key is not configured."
 
-    base_url = "http://api.weatherapi.com/v1/current.json"
-    params = {"key": api_key, "q": city, "aqi": "no"}
+    base_url = "http://api.weatherapi.com/v1/forecast.json"
+    params = {"key": api_key, "q": city, "days": days, "aqi": "no", "alerts": "no"}
     
     try:
         response = requests.get(base_url, params=params)
         response.raise_for_status()
         data = response.json()
         
+        # If the user wants a forecast for more than one day
+        if days > 1:
+            forecast_text = f"Weather forecast for {data['location']['name']}:\n"
+            for day in data['forecast']['forecastday']:
+                forecast_text += (
+                    f"- {day['date']}: {day['day']['condition']['text']}, "
+                    f"Max Temp: {day['day']['maxtemp_c']}°C, Min Temp: {day['day']['mintemp_c']}°C, "
+                    f"Chance of Rain: {day['day']['daily_chance_of_rain']}%\n"
+                )
+            return forecast_text
+
+        # Otherwise, return the current weather
+        current = data['current']
         weather_report = (
-            f"The current weather in {data['location']['name']} is {data['current']['condition']['text']} "
-            f"with a temperature of {data['current']['temp_c']}°C."
+            f"The current weather in {data['location']['name']} is {current['condition']['text']} "
+            f"with a temperature of {current['temp_c']}°C."
         )
         return weather_report
     except requests.exceptions.RequestException as e:
         logger.error(f"Error fetching weather data: {e}")
         return "Sorry, I couldn't fetch the weather information at this time."
 
-# --- Market Price Tool (Completely Rewritten with Smarter Logic) ---
-def get_market_price(commodity: str, market: str, state: str = "Karnataka") -> str:
+
+def get_market_price(commodity: str, state: str = "Karnataka", market: str = None) -> str:
     """
-    Fetches the latest wholesale market price for a commodity.
-    If the specified market has no data, it intelligently searches for data in other markets within the same state.
+    Fetches the latest wholesale market price for a commodity from data.gov.in (AGMARKNET).
+    If a specific market is not found, it searches for prices across the entire state.
     """
     api_key = os.environ.get("DATAGOV_API_KEY")
     if not api_key:
-        logger.error("Data.gov.in API key is not configured.")
         return "Error: Market Price API key is not configured."
 
     api_url = "https://api.data.gov.in/resource/9ef84268-d588-465a-a308-a864a43d0070"
     
-    def fetch_data(params):
+    # First, try to find data for the specific market if provided
+    if market:
+        params = {
+            "api-key": api_key, "format": "json", "limit": "10",
+            "filters[state]": state,
+            "filters[market]": market, 
+            "filters[commodity]": commodity.title()
+        }
+        logger.info(f"Attempting to fetch market price with params: {params}")
         try:
             response = requests.get(api_url, params=params)
             response.raise_for_status()
-            return response.json()
+            data = response.json()
+            if data['records']:
+                latest_record = max(data['records'], key=lambda x: datetime.strptime(x['arrival_date'], '%d/%m/%Y'))
+                return (f"Latest price for {latest_record['commodity']} in {latest_record['market']} (on {latest_record['arrival_date']}): "
+                        f"₹{latest_record['modal_price']} per Quintal.")
         except requests.exceptions.RequestException as e:
-            logger.error(f"Error fetching market price data: {e}")
-            return None
+            logger.error(f"API request failed for specific market: {e}")
+            return f"Sorry, there was an error connecting to the market price service."
 
-    # Step 1: Try the specific market first
-    logger.info(f"Attempting to fetch market price for '{commodity}' in '{market}'...")
-    specific_params = {
+    # If no data was found for the specific market, search the entire state as a fallback
+    logger.info(f"No data for specific market. Searching for '{commodity}' in the entire state of '{state}'...")
+    params = {
         "api-key": api_key, "format": "json", "limit": "10",
-        "filters[market]": market.title(), "filters[commodity]": commodity.title()
+        "filters[state]": state,
+        "filters[commodity]": commodity.title()
     }
-    data = fetch_data(specific_params)
+    try:
+        response = requests.get(api_url, params=params)
+        response.raise_for_status()
+        data = response.json()
+        if data['records']:
+            latest_record = max(data['records'], key=lambda x: datetime.strptime(x['arrival_date'], '%d/%m/%Y'))
+            return (f"Sorry, I couldn't find recent data for '{commodity}' specifically in the '{market}' market. "
+                    f"However, here are the latest prices from other markets in {state}:\n"
+                    f"- {latest_record['market']} (on {latest_record['arrival_date']}): ₹{latest_record['modal_price']} per Quintal.")
+    except requests.exceptions.RequestException as e:
+        logger.error(f"API request failed for state-wide search: {e}")
+        return f"Sorry, there was an error connecting to the market price service."
 
-    if data and data.get('records'):
-        latest_record = max(data['records'], key=lambda x: datetime.strptime(x['arrival_date'], '%d/%m/%Y'))
-        return (
-            f"Latest price for {latest_record['commodity']} in {latest_record['market']} (on {latest_record['arrival_date']}): "
-            f"₹{latest_record['modal_price']} per Quintal."
-        )
-
-    # Step 2: If no data, try a broader search across the state
-    logger.warning(f"No data found for '{market}'. Trying a broader search in '{state}'...")
-    broad_params = {
-        "api-key": api_key, "format": "json", "limit": "20", # Get more records for a broad search
-        "filters[state]": state.title(), "filters[commodity]": commodity.title()
-    }
-    data = fetch_data(broad_params)
-
-    if data and data.get('records'):
-        # Get the top 3 most recent records from different markets
-        sorted_records = sorted(data['records'], key=lambda x: datetime.strptime(x['arrival_date'], '%d/%m/%Y'), reverse=True)
-        
-        # Filter for unique markets
-        unique_market_records = []
-        seen_markets = set()
-        for record in sorted_records:
-            if record['market'] not in seen_markets:
-                unique_market_records.append(record)
-                seen_markets.add(record['market'])
-            if len(unique_market_records) >= 3:
-                break
-        
-        if unique_market_records:
-            response_text = f"Sorry, I couldn't find recent data for '{commodity}' specifically in the '{market}' market. However, here are the latest prices from other markets in {state}:\n"
-            for record in unique_market_records:
-                response_text += f"- **{record['market']}** (on {record['arrival_date']}): ₹{record['modal_price']} per Quintal.\n"
-            return response_text
-
-    # Step 3: If still no data, return a final "not found" message
     return f"Sorry, I couldn't find any recent price data for '{commodity}' in any market in {state}. Please check the commodity spelling or try again later."
-

@@ -23,7 +23,6 @@ logger = logging.getLogger(__name__)
 api_key = os.environ.get("GROQ_API_KEY")
 if not api_key:
     raise ValueError("GROQ_API_KEY not found in .env file. Please create a .env file in the backend folder and add your key.")
-# Using a stable, fast model that is confirmed to be available.
 MODEL_NAME = "llama-3.3-70b-versatile"
 
 # --- CLIENTS INITIALIZATION ---
@@ -59,16 +58,19 @@ class ChatRequest(BaseModel):
     history: list[ChatMessage]
     language: str = "English"
 
-# --- TOOL DEFINITIONS ---
+# --- TOOL DEFINITIONS (UPGRADED) ---
 tools = [
     {
         "type": "function",
         "function": {
             "name": "get_weather",
-            "description": "Get the current weather for a specific city in India.",
+            "description": "Get the weather forecast for a specific city in India. Can get current weather or a forecast for up to 3 days.",
             "parameters": {
                 "type": "object",
-                "properties": {"city": {"type": "string", "description": "The city name, e.g., Mysuru"}},
+                "properties": {
+                    "city": {"type": "string", "description": "The city name, e.g., Mysuru"},
+                    "days": {"type": "integer", "description": "Number of days for the forecast, from 1 (current) to 3. Defaults to 1."},
+                },
                 "required": ["city"],
             },
         },
@@ -100,17 +102,15 @@ def read_root():
 async def handle_chat(request: ChatRequest):
     messages = [msg.dict() for msg in request.history]
     try:
-        # --- NEW, STRICTER, UNIFIED SYSTEM PROMPT ---
-        # This single prompt defines the AI's core behavior for all scenarios.
-        system_prompt = f"""You are a helpful Digital Agriculture Officer. A user has selected their preferred language as {request.language}.
+        # --- UNIFIED SYSTEM PROMPT ---
+        system_prompt = f"""You are a helpful Digital Agriculture Officer. The user's preferred language is {request.language}.
 
-        IMPORTANT, STRICT RULE: Your entire response MUST be in {request.language}, even if the user asks a question or the tool returns text in a different language.
-        NEVER switch languages. NEVER apologize for using the selected language.
-
-        If you use a tool and the user asks a new, unrelated question, you MUST ignore the previous tool's result and answer the new question directly.
+        IMPORTANT RULES:
+        1.  **STRICT LANGUAGE:** You MUST reply in {request.language}, even if the user asks in English.
+        2.  **HANDLE TOOL ERRORS:** If a tool returns an error or 'not found' message, translate that message into {request.language} and present it to the user.
+        3.  **IGNORE OLD CONTEXT:** If you use a tool and the user asks a new, unrelated question, ignore the previous tool result.
         """
-
-        # Prepend the system prompt to the conversation history
+        
         messages_with_system_prompt = [{"role": "system", "content": system_prompt}] + messages
 
         # Step 1: Check if a tool needs to be called
@@ -125,16 +125,17 @@ async def handle_chat(request: ChatRequest):
             function_to_call = available_tools[function_name]
             function_args = json.loads(tool_calls[0].function.arguments)
             
+            # Handle default arguments for our functions
             if function_name == "get_market_price" and "market" not in function_args:
                 function_args["market"] = None
+            if function_name == "get_weather" and "days" not in function_args:
+                function_args["days"] = 1 # Default to current weather
 
             function_response = function_to_call(**function_args)
             
-            # Append the original message and the tool response to the history
             messages.append(response_message)
             messages.append({"role": "tool", "tool_call_id": tool_calls[0].id, "name": function_name, "content": function_response})
             
-            # Call the model again with the tool's result and the strict system prompt
             final_response = groq_client.chat.completions.create(model=MODEL_NAME, messages=[{"role": "system", "content": system_prompt}] + messages)
             return {"reply": final_response.choices[0].message.content}
 
@@ -149,7 +150,6 @@ async def handle_chat(request: ChatRequest):
             except Exception as e:
                 logger.error(f"Error querying RAG DB: {e}")
 
-        # The system prompt already includes the language rule and now also the context.
         system_prompt_with_context = f"{system_prompt}{context}"
         final_messages = [{"role": "system", "content": system_prompt_with_context}] + [msg for msg in messages if msg['role'] != 'system']
         
@@ -162,12 +162,11 @@ async def handle_chat(request: ChatRequest):
 DIAGNOSIS_HEADERS = {
     "English": {"identification": "Identification", "actions": "Immediate Actions", "treatment": "Treatment Plan", "prevention": "Prevention Tips"},
     "Kannada": {"identification": "ಗುರುತಿಸುವಿಕೆ", "actions": "ತಕ್ಷಣದ ಕ್ರಮಗಳು", "treatment": "ಚಿಕಿತ್ಸಾ ಯೋಜನೆ", "prevention": "ತಡೆಗಟ್ಟುವಿಕೆ ಸಲಹೆಗಳು"},
-    "Malayalam": {"identification": "തിരിച്ചറിയൽ", "actions": "ഉടനടി സ്വീകരിക്കേണ്ട നടപടികൾ", "treatment": "ചികിത്സാ പദ്ധതി", "prevention": "പ്രതിരോധത്തിനുള്ള നുറുങ്ങുകൾ"}
+    "Malayalam": {"identification": "ತಿരിച്ചറിയൽ", "actions": "ഉടനടി സ്വീകരിക്കേണ്ട നടപടികൾ", "treatment": "ചികിത്സാ പദ്ധതി", "prevention": "പ്രതിരോധത്തിനുള്ള നുറുങ്ങുകൾ"}
 }
 
 @app.post("/diagnose")
 async def handle_diagnose(file: UploadFile = File(...), language: str = Form("English")):
-    # This endpoint logic remains the same as it was working correctly.
     temp_dir = "temp_uploads"
     os.makedirs(temp_dir, exist_ok=True)
     file_path = os.path.join(temp_dir, file.filename)
@@ -203,4 +202,3 @@ async def handle_diagnose(file: UploadFile = File(...), language: str = Form("En
     finally:
         if os.path.exists(file_path):
             os.remove(file_path)
-
