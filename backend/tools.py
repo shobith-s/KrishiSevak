@@ -8,22 +8,27 @@ logger = logging.getLogger(__name__)
 def get_weather(city: str = "Mysuru", days: int = 1) -> str:
     """
     Fetches the weather forecast for a specified city in India from WeatherAPI.com.
-    Can fetch either the current weather (days=1) or a forecast for up to 3 days.
     """
     api_key = os.environ.get("WEATHERAPI_API_KEY")
     if not api_key:
         return "Error: Weather API key is not configured."
 
+    # --- BUG FIX ---
+    # The AI sometimes sends 'days' as a string. We convert it to an integer to be safe.
+    try:
+        num_days = int(days)
+    except (ValueError, TypeError):
+        num_days = 1 # Default to 1 day if the conversion fails
+
     base_url = "http://api.weatherapi.com/v1/forecast.json"
-    params = {"key": api_key, "q": city, "days": days, "aqi": "no", "alerts": "no"}
+    params = {"key": api_key, "q": city, "days": num_days, "aqi": "no", "alerts": "no"}
     
     try:
         response = requests.get(base_url, params=params)
         response.raise_for_status()
         data = response.json()
         
-        # If the user wants a forecast for more than one day
-        if days > 1:
+        if num_days > 1:
             forecast_text = f"Weather forecast for {data['location']['name']}:\n"
             for day in data['forecast']['forecastday']:
                 forecast_text += (
@@ -33,7 +38,6 @@ def get_weather(city: str = "Mysuru", days: int = 1) -> str:
                 )
             return forecast_text
 
-        # Otherwise, return the current weather
         current = data['current']
         weather_report = (
             f"The current weather in {data['location']['name']} is {current['condition']['text']} "
@@ -56,7 +60,6 @@ def get_market_price(commodity: str, state: str = "Karnataka", market: str = Non
 
     api_url = "https://api.data.gov.in/resource/9ef84268-d588-465a-a308-a864a43d0070"
     
-    # First, try to find data for the specific market if provided
     if market:
         params = {
             "api-key": api_key, "format": "json", "limit": "10",
@@ -77,7 +80,6 @@ def get_market_price(commodity: str, state: str = "Karnataka", market: str = Non
             logger.error(f"API request failed for specific market: {e}")
             return f"Sorry, there was an error connecting to the market price service."
 
-    # If no data was found for the specific market, search the entire state as a fallback
     logger.info(f"No data for specific market. Searching for '{commodity}' in the entire state of '{state}'...")
     params = {
         "api-key": api_key, "format": "json", "limit": "10",
@@ -90,7 +92,7 @@ def get_market_price(commodity: str, state: str = "Karnataka", market: str = Non
         data = response.json()
         if data['records']:
             latest_record = max(data['records'], key=lambda x: datetime.strptime(x['arrival_date'], '%d/%m/%Y'))
-            return (f"Sorry, I couldn't find recent data for '{commodity}' specifically in the '{market}' market. "
+            return (f"Sorry, I couldn't find recent data for '{commodity}' specifically in the '{market or 'specified'}' market. "
                     f"However, here are the latest prices from other markets in {state}:\n"
                     f"- {latest_record['market']} (on {latest_record['arrival_date']}): ₹{latest_record['modal_price']} per Quintal.")
     except requests.exceptions.RequestException as e:
@@ -98,3 +100,4 @@ def get_market_price(commodity: str, state: str = "Karnataka", market: str = Non
         return f"Sorry, there was an error connecting to the market price service."
 
     return f"Sorry, I couldn't find any recent price data for '{commodity}' in any market in {state}. Please check the commodity spelling or try again later."
+

@@ -1,35 +1,24 @@
-backend/.venv
+# --- SECRETS & LOCAL ENVIRONMENT ---
+# These should NEVER be uploaded.
 backend/.env
-backend/dataset
-backend/temp_uploads
-backend/__pycache__
-backend/db
-backend/documents
-plant_disease_classifier.pth
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+frontend/.env.local
 
-# dependencies
-/node_modules
+# --- PYTHON DEPENDENCIES & CACHES ---
+# These are installed on the server, so we don't need to upload them.
+backend/.venv/
+backend/__pycache__/
 
-# next.js
-/.next/
-/out/
+# --- NODE.JS DEPENDENCIES & BUILD FILES ---
+# These are also installed/created on the server.
+frontend/node_modules/
+frontend/.next/
+frontend/out/
 
-# production
-/build
+# --- TEMPORARY & OS FILES ---
+backend/temp_uploads/
+.DS_Store
+*.pyc
 
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-
-# env files
-.env*
-
-# vercel
-.vercel
-
-# typescript
-*.tsbuildinfo
-next-env.d.ts
+# --- TRAINING DATA (Optional) ---
+# We ignore the large dataset used for training, as it's not needed for the running application.
+backend/dataset/
