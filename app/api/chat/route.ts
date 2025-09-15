@@ -1,9 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { GoogleGenerativeAI } from "@google/generative-ai"
-import { WeatherService } from "@/lib/weather-service"
-import { MarketService } from "@/lib/market-service"
-import { KnowledgeBase } from "@/lib/knowledge-base"
-import { SeasonalCalendar } from "@/lib/seasonal-calendar"
+import { WeatherService } from "../../../backend/services/weather-service"
+import { MarketService } from "../../../backend/services/market-service"
+import { KnowledgeBase } from "../../../backend/services/knowledge-base"
+import { SeasonalCalendar } from "../../../backend/services/seasonal-calendar"
 
 interface ChatMessage {
   role: "user" | "assistant" | "system"

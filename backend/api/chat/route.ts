@@ -1,0 +1,6 @@
+import { type NextRequest, NextResponse } from "next/server"
+import { GoogleGenerativeAI } from "@google/generative-ai"
+import { WeatherService } from "../../services/weather-service"
+import { MarketService } from "../../services/market-service"
+import { KnowledgeBase } from "../../services/knowledge-base"
+import { SeasonalCalendar } from "../../services/seasonal-calendar"
