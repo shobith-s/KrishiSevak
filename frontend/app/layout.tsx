@@ -4,13 +4,28 @@ import type { Metadata } from "next"
 import "./globals.css"
 
 export const metadata: Metadata = {
-  title: "Digital Krishi Officer - Your Personal Farming Advisor",
+  title: "KrishiSevak - Your Personal Farming Advisor",
   description:
     "AI-powered agricultural assistant supporting multiple Indian languages. Get expert farming advice, crop analysis, and agricultural guidance.",
-  keywords: "agriculture, farming, AI assistant, crop advice, digital agriculture, krishi, farming advisor",
+  keywords: "agriculture, farming, AI assistant, crop advice, digital agriculture, krishi, farming advisor, mobile farming app",
   authors: [{ name: "Digital Agriculture Team" }],
-  viewport: "width=device-width, initial-scale=1",
-    generator: 'v0.app'
+  viewport: {
+    width: 'device-width',
+    initialScale: 1,
+    maximumScale: 1,
+    userScalable: false,
+    viewportFit: 'cover'
+  },
+  themeColor: '#059669',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'KrishiSevak'
+  },
+  formatDetection: {
+    telephone: false
+  },
+  generator: 'v0.app'
 }
 
 export default function RootLayout({

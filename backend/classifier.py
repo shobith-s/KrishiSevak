@@ -39,7 +39,7 @@ model_path = "plant_disease_classifier.pth"
 if os.path.exists(model_path):
     try:
         # Load the weights into the model structure. We use map_location to ensure it works on CPU if needed.
-        model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
+        model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu'), weights_only=False))
         logger.info(f"Successfully loaded fine-tuned model from {model_path}")
     except Exception as e:
         logger.error(f"Error loading model weights: {e}")
