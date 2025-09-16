@@ -12,3 +12,5 @@ tqdm
 chromadb
 sentence-transformers
 requests
+# MODEL_NAME = "llama-3.3-70b-versatile"
+# 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

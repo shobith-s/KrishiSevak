@@ -1,6 +1,6 @@
 // frontend/lib/api.ts
 
-const API_BASE_URL = "http://localhost:12000";
+const API_BASE_URL = "http://localhost:8000";
 
 // This interface defines the structure of a single message object
 // It's exported so both files can use the exact same definition.
