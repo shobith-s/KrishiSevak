@@ -21,6 +21,7 @@ import {
   ChevronDown,
   AlertCircle,
   Loader2,
+  Globe,
 } from "lucide-react"
 
 type Language = "en" | "hi" | "kn" | "ml"
@@ -347,188 +348,200 @@ export function KrishiOfficerChat() {
   ]
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50">
-      <div className="max-w-4xl mx-auto p-4 flex flex-col min-h-screen">
+    <div className="flex flex-col h-screen bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50">
+      {/* Sticky Header */}
+      <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-sm border-b border-green-200 shadow-sm">
+        <div className="flex items-center justify-between px-4 py-3">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-green-600 rounded-xl">
+              <Sprout className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-lg font-bold text-green-800">KrishiSevak</h1>
+              <p className="text-xs text-green-600">{translations[currentLanguage].subtitle}</p>
+            </div>
+          </div>
+          <div className="relative">
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex items-center gap-1 text-green-600 border-green-200 hover:bg-green-50 bg-transparent h-9 px-3"
+              onClick={() => setShowLanguageDropdown(!showLanguageDropdown)}
+            >
+              <Globe className="h-4 w-4" />
+              <span className="text-xs font-medium hidden sm:inline">{languageNames[currentLanguage]}</span>
+              <ChevronDown className="h-3 w-3" />
+            </Button>
+
+            {showLanguageDropdown && (
+              <div className="absolute right-0 top-full mt-2 bg-white border border-green-200 rounded-xl shadow-lg z-10 min-w-[140px]">
+                {Object.entries(languageNames).map(([code, name]) => (
+                  <button
+                    key={code}
+                    className={`w-full text-left px-4 py-2 text-sm hover:bg-green-50 first:rounded-t-xl last:rounded-b-xl ${
+                      currentLanguage === code ? "bg-green-50 text-green-700 font-medium" : "text-gray-700"
+                    }`}
+                    onClick={() => {
+                      setCurrentLanguage(code as Language)
+                      setShowLanguageDropdown(false)
+                    }}
+                  >
+                    {name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Connection Error Banner */}
         {connectionError && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2 text-red-700">
-            <AlertCircle className="h-4 w-4" />
-            <span className="text-sm">Connection issues detected. Some features may not work properly.</span>
+          <div className="px-4 pb-3">
+            <div className="p-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2 text-red-700">
+              <AlertCircle className="h-4 w-4" />
+              <span className="text-sm">Connection issues detected. Some features may not work properly.</span>
+            </div>
           </div>
         )}
+      </header>
 
-        <header className="mb-6">
-          <Card className="bg-white/90 backdrop-blur-sm border-green-200 shadow-sm">
-            <div className="p-6 flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="p-3 bg-green-600 rounded-2xl">
-                  <Sprout className="h-8 w-8 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-2xl font-bold text-green-800">{translations[currentLanguage].title}</h1>
-                  <p className="text-green-600 text-sm">{translations[currentLanguage].subtitle}</p>
-                </div>
-              </div>
-              <div className="relative">
-                <Button
-                  variant="outline"
-                  className="flex items-center gap-2 text-green-600 border-green-200 hover:bg-green-50 bg-transparent"
-                  onClick={() => setShowLanguageDropdown(!showLanguageDropdown)}
-                >
-                  <Languages className="h-4 w-4" />
-                  <span className="text-sm font-medium">{languageNames[currentLanguage]}</span>
-                  <ChevronDown className="h-4 w-4" />
-                </Button>
-
-                {showLanguageDropdown && (
-                  <div className="absolute right-0 top-full mt-2 bg-white border border-green-200 rounded-xl shadow-lg z-10 min-w-[140px]">
-                    {Object.entries(languageNames).map(([code, name]) => (
-                      <button
-                        key={code}
-                        className={`w-full text-left px-4 py-2 text-sm hover:bg-green-50 first:rounded-t-xl last:rounded-b-xl ${
-                          currentLanguage === code ? "bg-green-50 text-green-700 font-medium" : "text-gray-700"
-                        }`}
-                        onClick={() => {
-                          setCurrentLanguage(code as Language)
-                          setShowLanguageDropdown(false)
-                        }}
-                      >
-                        {name}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </Card>
-        </header>
-
-        <Card className="flex-1 bg-white/90 backdrop-blur-sm border-green-200 shadow-sm">
-          <ScrollArea className="h-[60vh] p-6">
-            <div className="space-y-6">
-              {messages.map((message) => (
-                <div key={message.id} className={`flex ${message.type === "user" ? "justify-end" : "justify-start"}`}>
-                  <div
-                    className={`max-w-[75%] p-4 rounded-2xl shadow-sm ${
-                      message.type === "user"
-                        ? "bg-green-600 text-white"
-                        : message.type === "error"
-                          ? "bg-red-50 text-red-800 border border-red-200"
-                          : "bg-gray-100 text-gray-800"
-                    }`}
-                  >
-                    {message.image && (
-                      <div className="mb-3 rounded-xl overflow-hidden">
-                        <img
-                          src={message.image || "/placeholder.svg"}
-                          alt="Uploaded crop"
-                          className="w-full h-48 object-cover"
-                        />
-                      </div>
-                    )}
-                    <p className="text-sm leading-relaxed">{message.content}</p>
-                    <div className="flex items-center gap-1 mt-2 text-xs opacity-70">
-                      {message.type === "error" ? <AlertCircle className="h-3 w-3" /> : <Leaf className="h-3 w-3" />}
-                      <span suppressHydrationWarning>
-                        {message.timestamp.toLocaleTimeString(currentLanguage === "en" ? "en-US" : "hi-IN")}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-
-              {isLoading && (
-                <div className="flex justify-start">
-                  <div className="bg-gray-100 text-gray-800 p-4 rounded-2xl shadow-sm flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span className="text-sm">Thinking...</span>
-                  </div>
-                </div>
-              )}
-            </div>
-            <div ref={messagesEndRef} />
-          </ScrollArea>
-        </Card>
-
-        <Card className="mt-4 bg-white/90 backdrop-blur-sm border-green-200 shadow-sm">
-          <div className="p-4">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
-              {quickActions.map((action, index) => (
-                <Button
-                  key={index}
-                  variant="outline"
-                  size="sm"
-                  className="h-auto p-3 flex flex-col items-center gap-2 border-green-200 text-green-700 hover:bg-green-50 bg-transparent"
-                  onClick={() => setInputValue(action.query)}
-                >
-                  {React.createElement(action.icon, { className: "h-4 w-4" })}
-                  <span className="text-xs">{action.text}</span>
-                </Button>
-              ))}
-            </div>
-
-            <div className="flex gap-3 items-end">
-              <div className="flex-1">
-                <Input
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  placeholder={translations[currentLanguage].placeholder}
-                  className="bg-gray-50 border-gray-200 text-gray-900 placeholder:text-gray-500 rounded-xl text-base py-3"
-                  onKeyPress={(e) => e.key === "Enter" && !isLoading && handleSendMessage()}
-                  disabled={isLoading}
-                  maxLength={2000}
-                />
-                <div className="text-xs text-gray-500 mt-1 text-right">{inputValue.length}/2000</div>
-              </div>
-
-              <div className="flex gap-2">
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleImageUpload}
-                  accept="image/*"
-                  className="hidden"
-                />
-
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="rounded-xl border-gray-200 text-gray-600 hover:bg-gray-50 bg-transparent"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={isLoading}
-                >
-                  <Camera className="h-5 w-5" />
-                </Button>
-
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className={`rounded-xl border-gray-200 text-gray-600 hover:bg-gray-50 ${
-                    isListening ? "bg-blue-50 text-blue-600" : ""
+      {/* Chat Messages Area */}
+      <div className="flex-1 overflow-hidden">
+        <ScrollArea className="h-full">
+          <div className="px-4 py-6 space-y-4">
+            {messages.map((message) => (
+              <div key={message.id} className={`flex ${message.type === "user" ? "justify-end" : "justify-start"}`}>
+                <div
+                  className={`max-w-[85%] sm:max-w-[75%] px-4 py-3 rounded-2xl shadow-sm ${
+                    message.type === "user"
+                      ? "bg-gray-100 text-gray-900 rounded-br-md"
+                      : message.type === "error"
+                        ? "bg-red-50 text-red-800 border border-red-200 rounded-bl-md"
+                        : "bg-green-100 text-green-900 rounded-bl-md"
                   }`}
-                  onClick={toggleVoiceInput}
-                  disabled={isLoading}
                 >
-                  <Mic className="h-5 w-5" />
-                </Button>
-
-                <Button
-                  onClick={handleSendMessage}
-                  className="rounded-xl bg-green-600 hover:bg-green-700 text-white px-6"
-                  disabled={!inputValue.trim() || isLoading}
-                >
-                  {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
-                </Button>
+                  {message.image && (
+                    <div className="mb-3 rounded-xl overflow-hidden">
+                      <img
+                        src={message.image || "/placeholder.svg"}
+                        alt="Uploaded crop"
+                        className="w-full h-48 object-cover"
+                      />
+                    </div>
+                  )}
+                  <p className="text-sm leading-relaxed">{message.content}</p>
+                  <div className="flex items-center gap-1 mt-2 text-xs opacity-60">
+                    <span suppressHydrationWarning>
+                      {message.timestamp.toLocaleTimeString(currentLanguage === "en" ? "en-US" : "hi-IN", {
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </span>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
-        </Card>
+            ))}
 
-        <footer className="mt-4 text-center">
-          <p className="text-sm text-green-600 flex items-center justify-center gap-2">
-            <Leaf className="h-4 w-4" />
+            {isLoading && (
+              <div className="flex justify-start">
+                <div className="bg-green-100 text-green-900 px-4 py-3 rounded-2xl rounded-bl-md shadow-sm flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span className="text-sm">Thinking...</span>
+                </div>
+              </div>
+            )}
+          </div>
+          <div ref={messagesEndRef} />
+        </ScrollArea>
+      </div>
+
+      {/* Quick Actions - Above Input */}
+      <div className="px-4 py-2">
+        <div className="flex flex-wrap gap-2 justify-center">
+          {quickActions.map((action, index) => (
+            <Button
+              key={index}
+              variant="outline"
+              size="sm"
+              className="h-9 px-3 flex items-center gap-2 border-green-200 text-green-700 hover:bg-green-50 bg-white/80 backdrop-blur-sm rounded-full"
+              onClick={() => setInputValue(action.query)}
+            >
+              {React.createElement(action.icon, { className: "h-4 w-4" })}
+              <span className="text-xs">{action.text}</span>
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      {/* Fixed Bottom Input Section */}
+      <div className="bg-white/95 backdrop-blur-sm border-t border-green-200 p-4">
+        <div className="flex items-end gap-2">
+          <div className="flex-1 relative">
+            <Input
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              placeholder={translations[currentLanguage].placeholder}
+              className="bg-gray-50 border-gray-200 text-gray-900 placeholder:text-gray-500 rounded-2xl text-base py-3 pr-12 min-h-[44px]"
+              onKeyPress={(e) => e.key === "Enter" && !isLoading && handleSendMessage()}
+              disabled={isLoading}
+              maxLength={2000}
+            />
+            {inputValue.length > 1800 && (
+              <div className="absolute -top-6 right-0 text-xs text-gray-500">
+                {inputValue.length}/2000
+              </div>
+            )}
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex gap-1">
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleImageUpload}
+              accept="image/*"
+              className="hidden"
+            />
+
+            <Button
+              variant="outline"
+              size="icon"
+              className="rounded-full border-gray-200 text-gray-600 hover:bg-gray-50 bg-white min-h-[44px] min-w-[44px]"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isLoading}
+            >
+              <Camera className="h-5 w-5" />
+            </Button>
+
+            <Button
+              variant="outline"
+              size="icon"
+              className={`rounded-full border-gray-200 text-gray-600 hover:bg-gray-50 min-h-[44px] min-w-[44px] ${
+                isListening ? "bg-blue-50 text-blue-600 border-blue-200" : "bg-white"
+              }`}
+              onClick={toggleVoiceInput}
+              disabled={isLoading}
+            >
+              <Mic className="h-5 w-5" />
+            </Button>
+
+            <Button
+              onClick={handleSendMessage}
+              className="rounded-full bg-green-600 hover:bg-green-700 text-white min-h-[44px] min-w-[44px] disabled:opacity-50"
+              disabled={!inputValue.trim() || isLoading}
+            >
+              {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
+            </Button>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="mt-3 text-center">
+          <p className="text-xs text-green-600 flex items-center justify-center gap-1">
+            <Leaf className="h-3 w-3" />
             {translations[currentLanguage].footer}
           </p>
-        </footer>
+        </div>
       </div>
     </div>
   )
